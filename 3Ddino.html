@@ -1,0 +1,239 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Dino Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Obstacles Passed: 0</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Basic setup for the entire scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Load images for the skybox
+        const loader = new THREE.CubeTextureLoader();
+        const texture = loader.load([
+            'https://devday2.s3.ap-south-1.amazonaws.com/Capehill/px.png', // right
+            'https://devday2.s3.ap-south-1.amazonaws.com/Capehill/nx.png', // left
+            'https://devday2.s3.ap-south-1.amazonaws.com/Capehill/py.png', // top
+            'https://devday2.s3.ap-south-1.amazonaws.com/Capehill/ny.png', // bottom
+            'https://devday2.s3.ap-south-1.amazonaws.com/Capehill/pz.png', // front
+            'https://devday2.s3.ap-south-1.amazonaws.com/Capehill/nz.png'  // back
+        ]);
+        scene.background = texture;
+
+        const dinoGeometry = new THREE.SphereGeometry(0.32, 36, 36); // Sphere geometry
+        const dinoMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red color
+        const dino = new THREE.Mesh(dinoGeometry, dinoMaterial);
+        dino.position.y = 0.25; // Positioned on the ground surface
+        scene.add(dino);
+
+//         const textureLoader = new THREE.TextureLoader();
+// const flyTexture = textureLoader.load('path_to_your_fly_or_bee_image.png');
+
+// // Bee/Fly (Textured Mesh)
+// const flyGeometry = new THREE.PlaneGeometry(1, 1); // Adjust size as needed
+// const flyMaterial = new THREE.MeshBasicMaterial({ map: flyTexture, transparent: true });
+// const fly = new THREE.Mesh(flyGeometry, flyMaterial);
+// fly.position.y = 0.5; // Adjusted position above the ground
+// scene.add(fly);
+
+        // Obstacles (Blue Cuboids)
+        const obstacles = [];
+        const obstacleInterval = 2000; // Interval between obstacle creation (milliseconds)
+        let lastObstacleTime = Date.now();
+        let obstacleSpeed = 0.02; // Increased obstacle speed
+        let obstacleXPosition = 10; // Initial x-position of obstacles
+        let obstacleGap = 3; // Gap between consecutive obstacles
+
+        function createObstacle() {
+            const obstacleGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2); // Smaller size
+            const obstacleMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+            obstacle.position.set(obstacleXPosition, 0.125, 0); // Adjusted position and size
+            scene.add(obstacle);
+
+            // Increase x-position for the next obstacle
+            obstacleXPosition += obstacleGap;
+
+            return obstacle;
+        }
+
+        // Function to create obstacles
+        function updateObstacles() {
+            const currentTime = Date.now();
+            if (currentTime - lastObstacleTime > obstacleInterval) {
+                const obstacle = createObstacle();
+                obstacles.push(obstacle);
+                lastObstacleTime = currentTime;
+            }
+
+            obstacles.forEach(obstacle => {
+                obstacle.position.x -= obstacleSpeed; // Adjusted speed of obstacles
+
+                // Check for collisions with obstacles
+                if (obstacle.position.x < dino.position.x + 0.25 && obstacle.position.x > dino.position.x - 0.25 &&
+                    obstacle.position.y < dino.position.y + 0.25 && obstacle.position.y > dino.position.y - 0.25) {
+                    handleCollision();
+                }
+
+                // Remove obstacles that are out of view
+                if (obstacle.position.x < -10) {
+                    scene.remove(obstacle);
+                    obstacles.splice(obstacles.indexOf(obstacle), 1);
+                } else if (obstacle.position.x < dino.position.x && !obstacle.passed) {
+                    obstacle.passed = true;
+                    incrementScore();
+                }
+            });
+        }
+
+        // Function to increment score
+        let obstaclesPassed = 0;
+        function incrementScore() {
+            obstaclesPassed++;
+            document.getElementById('score').innerText = `Obstacles Passed: ${obstaclesPassed}`;
+        }
+
+        // Road (Surface)
+        const roadGeometry = new THREE.PlaneGeometry(50, 1.5); // Full width of the screen, narrow height
+        const roadMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+        const road = new THREE.Mesh(roadGeometry, roadMaterial);
+        road.rotation.x = -Math.PI / 2;
+        road.position.y = 0.05; // Adjusted position to be above ground level
+        scene.add(road);
+
+        const groundGeometry = new THREE.PlaneGeometry(50, 0.2); // Wider width of the ground
+        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide }); // Black color with white lines
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = Math.PI / 2;
+        ground.position.y = 0; // Adjusted position
+        scene.add(ground);
+
+        // Adding light to make the transparent material visible
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        camera.position.z = 5;
+        camera.position.y = 2;
+
+        let gameOver = false;
+        let isJumping = false;
+
+        // Function to handle the dino jump
+        function handleDinoJump() {
+            if (!gameOver && !isJumping) {
+                isJumping = true;
+                let jumpHeight = 0;
+                let upTime = setInterval(() => {
+                    if (jumpHeight >= 155) {
+                        clearInterval(upTime);
+                        let downTime = setInterval(() => {
+                            if (jumpHeight <= 0) {
+                                clearInterval(downTime);
+                                isJumping = false;
+                            } else {
+                                jumpHeight -= 5;
+                                dino.position.y -= 0.05;
+                            }
+                        }, 20);
+                    } else {
+                        jumpHeight += 5;
+                        dino.position.y += 0.05;
+                    }
+                }, 20);
+            }
+        }
+
+        // Function to handle collision
+        function handleCollision() {
+            gameOver = true;
+            alert("Game Over!");
+        }
+
+        // Mouse movement variables
+        let mouseX = 0;
+        let mouseY = 0;
+
+        document.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        // Animation loop for the entire scene
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!gameOver) {
+                // Adjust camera rotation based on mouse movement
+                camera.rotation.y = mouseX * 0.1;
+                camera.rotation.x = mouseY * 0.1;
+
+                // Update obstacles
+                updateObstacles();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Start the animation loop
+        animate();
+
+        // Jump on spacebar (for manual testing)
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space') {
+                handleDinoJump();
+            }
+        });
+
+        // Restart game on click
+        document.addEventListener('click', () => {
+            if (gameOver) {
+                obstaclesPassed = 0;
+                document.getElementById('score').innerText = `Obstacles Passed: ${obstaclesPassed}`;
+                gameOver = false;
+                obstacles.forEach(obstacle => {
+                    scene.remove(obstacle);
+                });
+                obstacles.length = 0;
+                lastObstacleTime = Date.now();
+                obstacleXPosition = 10;
+            }
+        });
+    </script>
+</body>
+</html>
